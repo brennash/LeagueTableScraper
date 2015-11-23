@@ -108,19 +108,22 @@ class LeagueTableScraper:
 			for key in self.leagueCodes.keys():
 				leagueList = self.getLeagueCode(key)
 				for dict in leagueList:
+					position = dict['Position']
 					team = dict['Team']
 					played = dict['Played']
-					played = dict['Won']
-					played = dict['Draw']
-					played = dict['Lost']
-					played = dict['Goals For']
-					played = dict['Goals Against']
-					played = dict['Points']
-
-
-    			cur.execute("SELECT VERSION()")
-			ver = cur.fetchone()
-    			print "Database version : %s " % ver
+					won = dict['Won']
+					drawn = dict['Drawn']
+					lost = dict['Lost']
+					gf = dict['GoalsFor']
+					ga = dict['GoalsAgainst']
+					gd = dict['GoalDiff']
+					pts = dict['Points']
+			
+					sql = 'INSERT INTO '+key+'_1615 (Position, TeamName, Won, Drawn '
+					sql += 'Lost, GoalsFor, GoalsAgainst, GoalDiff, Points) VALUES '
+					sql += '({0},\'{1}\',{2},{3},{4},{5},{6},{7},{8});'.format(position, team, \
+					        won, drawn, lost, gf, ga, gd, pts)
+		    			cur.execute(sql)
 		except mdb.Error, e:
 			print "Error %d: %s" % (e.args[0],e.args[1])
     			sys.exit(1)
