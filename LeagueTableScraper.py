@@ -3,7 +3,7 @@
 # title           :League Table Scraper							#
 # description     :Scrapes the web to write league data into a MySQL database		#
 # author          :Shane Brennan							#
-# date            :20151123								#
+# date            :20151215								#
 # version         :0.1									#
 # usage           :python LeagueTableScraper --help					#
 # notes           :Scrapes the web, could be volatile if the URL's change.		#
@@ -15,25 +15,23 @@ import os
 import json
 import re
 import operator
-import BeautifulSoup as bts
+import BeautifulSoup
 import urllib2
 from collections import OrderedDict
 from optparse import OptionParser
-#import MySQLdb as mdb
+import MySQLdb as mdb
 
 class LeagueTableScraper:
 
 	def __init__(self, configFilename=None):
-
 		# Setup the database connection 
-		conn = None
-		cursor = None
+		self.conn = None
+		self.cursor = None
 		
 		hostname = None
 		username = None
 		password = None
 		database = None
-
 
 		if configFilename is None:
 			configFilename = 'conf/database.conf'
@@ -47,13 +45,13 @@ class LeagueTableScraper:
 				if regex.match(line):
 					tokens = line.split('=')
 					if 'username' in tokens[0].rstrip().lower():
-						username = tokens[1].rstrip()
+						username = tokens[1].rstrip().lstrip()
 					elif 'password' in tokens[0].rstrip().lower():
-						password = tokens[1].rstrip()
+						password = tokens[1].rstrip().lstrip()
 					elif 'hostname' in tokens[0].rstrip().lower():
-						hostname = tokens[1].rstrip()
+						hostname = tokens[1].rstrip().lstrip()
 					elif 'database' in tokens[0].rstrip().lower():
-						database = tokens[1].rstrip()
+						database = tokens[1].rstrip().lstrip()
 		else:
 			print 'Error - Cannot find conf/database.conf in current directory!'
 			exit(1)
@@ -65,80 +63,29 @@ class LeagueTableScraper:
 
 		# Get all the league codes and URLs for each league 
 		self.leagueCodes = {}
-		self.leagueCodes['E0']  = 'competition-118996114'
-		self.leagueCodes['E1']  = 'competition-118996115'
-		self.leagueCodes['E2']  = 'competition-118996116'
-		self.leagueCodes['E3']  = 'competition-118996117'
-		self.leagueCodes['E4']  = 'competition-118996118'
-		self.leagueCodes['E5']  = 'competition-118996307'
-		self.leagueCodes['E6']  = 'competition-118996308'
-		self.leagueCodes['SC0'] = 'competition-118996176'
-		self.leagueCodes['SC1'] = 'competition-118996177'
-		self.leagueCodes['SC2'] = 'competition-118996178'
-		self.leagueCodes['SC3'] = 'competition-118996179'
-		self.leagueCodes['SC4'] = 'competition-118999031'
-		self.leagueCodes['SC5'] = 'competition-119003997'
-		self.leagueCodes['W1']  = 'competition-118996207'
-		self.leagueCodes['NI1'] = 'competition-118996238'
-		self.leagueCodes['IE1'] = 'competition-118996240'
-		self.leagueCodes['AR1'] = 'competition-999999994'
-		self.leagueCodes['AU1'] = 'competition-999999995'
-		self.leagueCodes['AT1'] = 'competition-119000919'
-		self.leagueCodes['B1']  = 'competition-119000924'
-		self.leagueCodes['BR1'] = 'competition-999999996'
-		self.leagueCodes['DK1'] = 'competition-119000950'
-		self.leagueCodes['N1']  = 'competition-119001012'
-		self.leagueCodes['FI1'] = 'competition-119000955'
-		self.leagueCodes['F1']  = 'competition-119000981'
-		self.leagueCodes['D1']  = 'competition-119000986'
-		self.leagueCodes['G1']  = 'competition-119001136'
-		self.leagueCodes['I1']  = 'competition-119001017'
-		self.leagueCodes['NO1'] = 'competition-119001043'
-		self.leagueCodes['PT1'] = 'competition-119001048'
-		self.leagueCodes['RU1'] = 'competition-999999990'
-		self.leagueCodes['SP1'] = 'competition-119001074'
-		self.leagueCodes['SE1'] = 'competition-119001079'
-		self.leagueCodes['CH1'] = 'competition-119001105'
-		self.leagueCodes['T1']  = 'competition-119001110'
-		self.leagueCodes['US1'] = 'competition-999999988'
+		self.leagueCodes['2015_IRL0_Fixtures'] = 'http://inform.fai.ie/Statsportal/PrintSchedule.aspx?CompID=14'
 
 		try:
-			conn = mdb.connect(hostname, username, password, database);
-			cursor = con.cursor()
-			for key in self.leagueCodes.keys():
-				leagueList = self.getLeagueCode(key)
-				for dict in leagueList:
-					position = dict['Position']
-					team = dict['Team']
-					played = dict['Played']
-					won = dict['Won']
-					drawn = dict['Drawn']
-					lost = dict['Lost']
-					gf = dict['GoalsFor']
-					ga = dict['GoalsAgainst']
-					gd = dict['GoalDiff']
-					pts = dict['Points']
-			
-					sql = 'INSERT INTO '+key+'_1615 (Position, TeamName, Won, Drawn '
-					sql += 'Lost, GoalsFor, GoalsAgainst, GoalDiff, Points) VALUES '
-					sql += '({0},\'{1}\',{2},{3},{4},{5},{6},{7},{8});'.format(position, team, \
-					        won, drawn, lost, gf, ga, gd, pts)
+			self.conn = mdb.connect(hostname, username, password, database);
+			self.cursor = self.conn.cursor()
+			for leagueCode in self.leagueCodes.keys():
+				fixtureData = self.getFixturesData(self.leagueCodes[leagueCode])
+				for dict in getFixtureData:			
 		    			cur.execute(sql)
 		except mdb.Error, e:
 			print "Error %d: %s" % (e.args[0],e.args[1])
     			sys.exit(1)
     
 
-	def getLeagueCode(self, leagueCode):
+	def getFixturesData(self, fixturesURL):
 		leagueTable = None
 
 		try:
-			tablesBaseURL = 'http://www.bbc.com/sport/football/tables?filter='
-			tablesUrl = fixturesBaseURL+self.leagueCodes[leagueCode]+".html"
-			tablesHtml = self.getRawHTML(tablesUrl)
-
-			if tablesHtml is not None:
-				leagueTable = self.scrapeTables(tablesHtml)
+			html = self.getRawHTML(fixturesURL)
+			if html is not None:
+				fixturesData = self.parseFixturesHTML(html)
+				print fixturesData
+				exit(1)
 	
 		except KeyError as error:
 			print "\nError - Invalid league code (",leagueCode,")..."
@@ -150,16 +97,16 @@ class LeagueTableScraper:
 		""" Returns the raw html from a specified URL or None
 		    if there's a problem with the URL.
 		"""
-
 		try:
-			response = urllib2.urlopen(url)
-			html = response.read()
+			opener = urllib2.build_opener(RedirectHandler())
+			webpage = opener.open(url)
+			Soup = BeautifulSoup.BeautifulSoup()
+			html=Soup(webpage)
 			return html
 		except urllib2.HTTPError as e:
 			print e.code
 			print e.read() 
 			return None
-	
 
 	def uescape(self, text):
 		return text.encode('utf-8')
@@ -183,14 +130,14 @@ class LeagueTableScraper:
 			
 		return int(year+month+day)
 		
-	def scrapeTables(self, html):
+	def parseFixturesHTML(self, html):
 		table = []
 
 		if len(html) < 10:
 			print "Error - Problems with HTML input to generate league tables..."
 			exit(1)
 
-		soup = bts.BeautifulSoup(html)
+		soup = BeautifulSoup.BeautifulSoup(html)
 		teamList = soup.findAll("tr", "team")
 
 		for team in teamList:
@@ -221,6 +168,15 @@ class LeagueTableScraper:
 			table.append(tablerow)
 
 		return table
+
+class RedirectHandler(urllib2.HTTPRedirectHandler):
+	def http_error_302(self, req, fp, code, msg, headers):
+        	result = urllib2.HTTPError(req.get_full_url(), code, msg, headers, fp)
+        	result.status = code
+        	return result
+    
+	http_error_301 = http_error_303 = http_error_307 = http_error_302
+
 
 def main(argv):
 	parser = OptionParser(usage="Usage: LeagueTableScraper [CONFIG]")
