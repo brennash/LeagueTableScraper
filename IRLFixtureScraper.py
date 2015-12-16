@@ -21,7 +21,7 @@ from collections import OrderedDict
 from optparse import OptionParser
 import MySQLdb as mdb
 
-class LeagueTableScraper:
+class IRLFixtureScraper:
 
 	def __init__(self, configFilename=None):
 		# Setup the database connection 
@@ -61,52 +61,81 @@ class LeagueTableScraper:
 			print 'Error - you need to specify the database config in',configFilename
 			exit(1)
 
-		# Get all the league codes and URLs for each league 
+		# Get the various URL's for the previous Irish League fixtures
 		self.leagueCodes = {}
-		self.leagueCodes['2015_IRL0_Fixtures'] = 'http://inform.fai.ie/Statsportal/PrintSchedule.aspx?CompID=14'
+		self.leagueCodes['2015_IRL0_Fixtures'] = 'http://www.rte.ie/sport/results/soccer/premier-division/19259/'
 
 		try:
 			self.conn = mdb.connect(hostname, username, password, database);
 			self.cursor = self.conn.cursor()
-			for leagueCode in self.leagueCodes.keys():
-				fixtureData = self.getFixturesData(self.leagueCodes[leagueCode])
-				for dict in getFixtureData:			
-		    			cur.execute(sql)
+			for key in self.leagueCodes.keys():
+				targetURL = self.leagueCodes[key]
+				html = self.getRawHTML(targetURL)
+				if html is not None:
+					self.parseHTML(html)
+				else:
+					print "Problem reading URL..."
+					exit(1)
+
 		except mdb.Error, e:
 			print "Error %d: %s" % (e.args[0],e.args[1])
     			sys.exit(1)
     
-
-	def getFixturesData(self, fixturesURL):
-		leagueTable = None
-
-		try:
-			html = self.getRawHTML(fixturesURL)
-			if html is not None:
-				fixturesData = self.parseFixturesHTML(html)
-				print fixturesData
-				exit(1)
-	
-		except KeyError as error:
-			print "\nError - Invalid league code (",leagueCode,")..."
-			exit(1)
-
-		return leagueTable
-
 	def getRawHTML(self, url):
 		""" Returns the raw html from a specified URL or None
 		    if there's a problem with the URL.
 		"""
 		try:
 			opener = urllib2.build_opener(RedirectHandler())
-			webpage = opener.open(url)
-			Soup = BeautifulSoup.BeautifulSoup()
-			html=Soup(webpage)
+			html = opener.open(url).read()
 			return html
 		except urllib2.HTTPError as e:
 			print e.code
 			print e.read() 
 			return None
+
+	def parseHTML(self, html):
+		soup = BeautifulSoup.BeautifulSoup(html)
+		resultRows = soup.findAll("tr", "page-")
+	
+		for row in resultRows:
+			tdList = row.findAll("td")
+			print "Length:",len(tdList)
+			print "Date:",tdList[0].getText()
+
+			homeScorersList = tdList[1].findAll("li")
+			for homeScorer in homeScorersList:
+				print "HomeScorer",homeScorer.getText()
+
+			print "HomeTeam:",self.getTeamName(str(tdList[1]))
+			resultRaw = row.findAll("td","results-text-center")[0].getText() 
+			resultRaw = resultRaw.replace('&nbsp;-&nbsp;',',')
+			results = resultRaw.split(',')
+			print "Results:",results
+
+			print "AwayTeam:",self.getTeamName(str(tdList[3]))
+			
+	def getTeamName(self, html):
+		""" Returns the team name between a HTML snippet, i.e., between the td and ul tags, 
+		    if a ul tag exists. Also strips out some unicode for apostrophes. 
+		"""
+		startIndex = html.find('>')
+		endIndex = html.find('<ul')
+
+		if startIndex == -1:
+			return "NULL"
+		else:
+			if endIndex != -1:
+				return html[startIndex+1:endIndex]
+			else:
+				return html[startIndex+1:]
+
+	def getIndex(self, tag, html):
+		try:
+			return  html.index(tag)
+		except:
+			return -1			
+
 
 	def uescape(self, text):
 		return text.encode('utf-8')
@@ -130,45 +159,6 @@ class LeagueTableScraper:
 			
 		return int(year+month+day)
 		
-	def parseFixturesHTML(self, html):
-		table = []
-
-		if len(html) < 10:
-			print "Error - Problems with HTML input to generate league tables..."
-			exit(1)
-
-		soup = BeautifulSoup.BeautifulSoup(html)
-		teamList = soup.findAll("tr", "team")
-
-		for team in teamList:
-			position = team.findAll("span", "position-number")[0].getText()		
-			teamName = team.findAll("td", "team-name")[0].getText()
-			played = team.findAll("td", "played")[0].getText()
-
-			won = team.findAll("td", "won")[0].getText()
-			drawn = team.findAll("td", "drawn")[0].getText()
-			lost = team.findAll("td", "lost")[0].getText()
-
-			gf = team.findAll("td", "for")[0].getText()
-			ga = team.findAll("td", "against")[0].getText()
-			goalDiff = team.findAll("td", "goal-difference")[0].getText()
-					
-			points = team.findAll("td", "points")[0].getText()
-			tablerow = {}
-			tablerow['Position'] = position
-			tablerow['TeamName'] = teamName
-			tablerow['Played'] = played
-			tablerow['Won'] = won
-			tablerow['Drawn'] = drawn
-			tablerow['Lost'] = lost
-			tablerow['GoalsFor'] = gf
-			tablerow['GoalsAgainst'] = ga
-			tablerow['GoalDiff'] = goalDiff
-			tablerow['Points'] = points
-			table.append(tablerow)
-
-		return table
-
 class RedirectHandler(urllib2.HTTPRedirectHandler):
 	def http_error_302(self, req, fp, code, msg, headers):
         	result = urllib2.HTTPError(req.get_full_url(), code, msg, headers, fp)
@@ -179,7 +169,7 @@ class RedirectHandler(urllib2.HTTPRedirectHandler):
 
 
 def main(argv):
-	parser = OptionParser(usage="Usage: LeagueTableScraper [CONFIG]")
+	parser = OptionParser(usage="Usage: IRLFixtureScraper [CONFIG]")
 
         parser.add_option("-c", "--config",
                 action='store',
@@ -189,7 +179,7 @@ def main(argv):
 
 	(options, filename) = parser.parse_args()
 
-	scraper = LeagueTableScraper(options.config)
+	scraper = IRLFixtureScraper(options.config)
 		
 if __name__ == "__main__":
     sys.exit(main(sys.argv))

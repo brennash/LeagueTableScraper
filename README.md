@@ -1,7 +1,8 @@
-# LeagueTableScraper
-Scrapes League tables and updates a MySQL database with the data. This code requires the BeautifulSoup python
-library as well as the standard MySQL libraries. For the purposes of testing this code is provisioned with a 
-sample MySQL database called league and a series of tables representing the various leagues scraped. 
+# IRLFixtureScraper
+This script is used to scrape the web for historic Irish League fixtures updating a MySQL database with the 
+fixture data. This code requires the BeautifulSoup python library as well as the standard MySQL libraries. 
+For the purposes of testing this code is provisioned with a sample MySQL database called mydatabase and a 
+series of tables representing the various fixtures and tables scraped.
 
 To install and run this code, ideally on Ubuntu 14.04, you need to install or have, 
 
@@ -21,8 +22,6 @@ sudo apt-get install mysql-client
 Setup a database, noting the name, and add a new user/password, all this setup SQL is detailed in 
 the sql folder. 
 
-
-
 ## Running the Scraper
 
-python LeagueTableScraper conf/database.conf
+python IRLFixtureScraper conf/database.conf
