@@ -80,6 +80,24 @@ class IRLFixtureScraper:
 		except mdb.Error, e:
 			print "Error %d: %s" % (e.args[0],e.args[1])
     			sys.exit(1)
+
+	def insertData(self, fixture):
+		""" Inserts the fixture data into the fixture and scorers tables in the 
+		    database. This will allow the league table to be generated then via 
+		    SQL rather than statically. 
+		"""
+		try:
+			sql = "INSERT INTO 2015_IRL0_Fixtures (LeagueCode, SeasonCode, "
+			sql = sql + "Date, HomeTeam, AwayTeam, HomeFT, AwayFT) VALUES "
+			sql = sql + '(\'{0}\',\'{1}\',\'{2}\',\'{3}\',\'{4}\',{5},{6});'.format('IRL0',\
+				'2015', fixture['Date'], fixture['HomeTeam'],fixture['AwayTeam'], \
+				fixture['HomeFT'], fixture['AwayFT'])
+			self.cursor.execute(sql)
+			print "INSERTING ",fixture['HomeTeam'],"vs",fixture['AwayTeam']			
+			self.cursor.execute('COMMIT;')
+		except:
+			print "Error INSERTING ",fixture['HomeTeam'],"vs",fixture['AwayTeam']
+
     
 	def getRawHTML(self, url):
 		""" Returns the raw html from a specified URL or None
@@ -100,20 +118,35 @@ class IRLFixtureScraper:
 	
 		for row in resultRows:
 			tdList = row.findAll("td")
-			print "Length:",len(tdList)
-			print "Date:",tdList[0].getText()
 
+			fixture = {}
+			fixture['Date'] = self.formatDate(tdList[0].getText())
+			homeGoals = []
 			homeScorersList = tdList[1].findAll("li")
 			for homeScorer in homeScorersList:
-				print "HomeScorer",homeScorer.getText()
+				homeGoals.append(self.getScorer(homeScorer.getText()) )
 
-			print "HomeTeam:",self.getTeamName(str(tdList[1]))
+			fixture['HomeGoals'] = homeGoals
+			fixture['HomeTeam'] = self.getTeamName(str(tdList[1]))
+
 			resultRaw = row.findAll("td","results-text-center")[0].getText() 
 			resultRaw = resultRaw.replace('&nbsp;-&nbsp;',',')
 			results = resultRaw.split(',')
-			print "Results:",results
+			fixture['HomeFT'] = int(results[0])
+			fixture['AwayFT'] = int(results[1])
+			fixture['AwayTeam'] = self.getTeamName(str(tdList[3]))
 
-			print "AwayTeam:",self.getTeamName(str(tdList[3]))
+			awayGoals = []
+			awayScorersList = tdList[3].findAll("li")
+			for awayScorer in awayScorersList:
+				awayGoals.append(self.getScorer(awayScorer.getText()))
+			fixture['AwayGoals'] = awayGoals
+
+			## IF YOU WANT TO PRINT THE OUTPUT AS JSON, UNCOMMENT BELOW
+			# print json.dumps(fixture, sort_keys=True)
+			self.insertData(fixture)
+
+
 			
 	def getTeamName(self, html):
 		""" Returns the team name between a HTML snippet, i.e., between the td and ul tags, 
@@ -126,9 +159,34 @@ class IRLFixtureScraper:
 			return "NULL"
 		else:
 			if endIndex != -1:
-				return html[startIndex+1:endIndex]
+				return html[startIndex+1:endIndex].replace('\n','').replace('&#39;','\'\'')
 			else:
-				return html[startIndex+1:]
+				return html[startIndex+1:].replace('\n','').replace('&#39;','\'\'')
+
+	def getScorer(self, goalText):
+		""" The goalText is a string in the form "Joe Bloggs  14'", this 
+		    function will split the string by white-space adding non
+		    numeric tokens as a player name, and the numerics as the minutes
+		"""
+
+		regex = re.compile('^[0-9]+\'')
+		tokens = goalText.replace('\n','').rstrip().split(' ')
+		name = ""
+		min = ""
+		for token in tokens:
+			if regex.match(token):
+				min = int(token.replace('\'',''))
+			else:
+				if len(name) > 1:
+					name = name + " " + str(token)
+				else:
+					name = name + str(token)
+
+		result = {}
+		result['Scorer'] = name.rstrip().replace('\n','').replace('&#39;','\'\'')
+		result['Minute'] = min
+		return result
+		
 
 	def getIndex(self, tag, html):
 		try:
@@ -139,6 +197,28 @@ class IRLFixtureScraper:
 
 	def uescape(self, text):
 		return text.encode('utf-8')
+
+	def formatDate(self, dateString):
+		""" Converts date string in the format 6 Mar 2015 7:45pm to 2015-03-06.
+		"""
+		tokens = dateString.split(' ')
+		months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+		monthInts = ['01','02','03','04','05','06','07','08','09','10','11','12']
+
+		day = tokens[0]
+		if len(day) == 1:
+			day = "0"+day
+
+		if tokens[1] in months:
+			monthIndex = months.index(tokens[1])
+			month = monthInts[monthIndex]
+		else:
+			print "Cannot parse month",tokens[1]
+			exit(1)
+		year = tokens[2]
+
+		return (year + '-' + month + '-' + day)
+
 
 	def convertDateToYYYYMMDD(self, dateString):
 		""" Converts a date string of the form 10th May 2015 to 20150510
