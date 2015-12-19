@@ -10,7 +10,8 @@ create table 2015_IRL0_Fixtures (FixtureSID INT AUTO_INCREMENT, LeagueCode VARCH
 create table 2015_IRL0_Table (
   TableSID INT NOT NULL AUTO_INCREMENT, 
   LeagueCode VARCHAR(6), 
-  SeasonCode INT, 
+  SeasonCode INT,
+  LeaguePosition INT, 
   TeamName VARCHAR(64), 
   Win INT, 
   Draw INT, 
@@ -33,13 +34,18 @@ create table 2015_IRL0_Table (
   AwayGoalsAgainst INT,
   AwayGoalDiff INT, 
   AwayPoints INT, 
+  WinPosition TINYINT(1),
+  QualPosition TINYINT(1),
+  PlayoffPosition TINYINT(1),
+  RelegationPosition TINYINT(1),
+  MovedUp TINYINT(1),
+  MovedDown TINYINT(1),
+  StayedSame TINYINT(1),
+  Comment VARCHAR(128),
 PRIMARY KEY(TableSID, LeagueCode, SeasonCode));
 
---- Get all the distinct teams into a temporary table
-CREATE TEMPORARY TABLE IF NOT EXISTS TempTeams AS (SELECT DISTINCT(HomeTeam) FROM 2015_IRL0_Fixtures);
 
-
---- Create the procedure to populate the league table
+--- Populate the league table
 DROP PROCEDURE IF EXISTS UpdateLeagueTable;
 DELIMITER ;;
 CREATE PROCEDURE UpdateLeagueTable()
@@ -47,51 +53,68 @@ BEGIN
 DECLARE n INT DEFAULT 0;
 DECLARE i INT DEFAULT 0;
 
-DECLARE hwin INT DEFAULT 0;
-DECLARE hdraw INT DEFAULT 0;
-DECLARE hloss INT DEFAULT 0;
-DECLARE hgf INT DEFAULT 0;
-DECLARE hga INT DEFAULT 0;
+DECLARE h_win INT DEFAULT 0;
+DECLARE h_draw INT DEFAULT 0;
+DECLARE h_loss INT DEFAULT 0;
+DECLARE h_gf INT DEFAULT 0;
+DECLARE h_ga INT DEFAULT 0;
 
-DECLARE awin INT DEFAULT 0;
-DECLARE adraw INT DEFAULT 0;
-DECLARE aloss INT DEFAULT 0;
-DECLARE agf INT DEFAULT 0;
-DECLARE aga INT DEFAULT 0;
+DECLARE a_win INT DEFAULT 0;
+DECLARE a_draw INT DEFAULT 0;
+DECLARE a_loss INT DEFAULT 0;
+DECLARE a_gf INT DEFAULT 0;
+DECLARE a_ga INT DEFAULT 0;
 
 DECLARE name VARCHAR(64) DEFAULT NULL;
+
+CREATE TEMPORARY TABLE IF NOT EXISTS TempTeams AS (SELECT DISTINCT(HomeTeam) FROM 2015_IRL0_Fixtures);
+
 SELECT COUNT(*) FROM TempTeams INTO n;
+
 SET i=0;
 WHILE i < n DO
 	SELECT HomeTeam FROM TempTeams LIMIT i,1 INTO name;
 
-	-- Get the home details
-	SELECT COUNT(*) FROM 2015_IRL0_Fixtures WHERE homeTeam=name and homeFT>awayFT INTO hwin;
-	SELECT COUNT(*) FROM 2015_IRL0_Fixtures WHERE homeTeam=name and homeFT=awayFT INTO hdraw;
-	SELECT COUNT(*) FROM 2015_IRL0_Fixtures WHERE homeTeam=name and homeFT<awayFT INTO hloss;
-	SELECT SUM(homeFT) FROM 2015_IRL0_Fixtures WHERE homeTeam=name INTO hgf;
-	SELECT SUM(awayFT) FROM 2015_IRL0_Fixtures WHERE homeTeam=name INTO hga;
+	SELECT COUNT(*) FROM 2015_IRL0_Fixtures WHERE homeTeam=name and homeFT>awayFT INTO h_win;
+	SELECT COUNT(*) FROM 2015_IRL0_Fixtures WHERE homeTeam=name and homeFT=awayFT INTO h_draw;
+	SELECT COUNT(*) FROM 2015_IRL0_Fixtures WHERE homeTeam=name and homeFT<awayFT INTO h_loss;
+	SELECT SUM(homeFT) FROM 2015_IRL0_Fixtures WHERE homeTeam=name INTO h_gf;
+	SELECT SUM(awayFT) FROM 2015_IRL0_Fixtures WHERE homeTeam=name INTO h_ga;
 
-	-- Now get the away details
-	SELECT COUNT(*) FROM 2015_IRL0_Fixtures WHERE awayTeam=name and homeFT<awayFT INTO awin;
-	SELECT COUNT(*) FROM 2015_IRL0_Fixtures WHERE awayTeam=name and homeFT=awayFT INTO adraw;
-	SELECT COUNT(*) FROM 2015_IRL0_Fixtures WHERE awayTeam=name and homeFT>awayFT INTO aloss;
-	SELECT SUM(awayFT) FROM 2015_IRL0_Fixtures WHERE awayTeam=name INTO agf;
-	SELECT SUM(homeFT) FROM 2015_IRL0_Fixtures WHERE awayTeam=name INTO aga;
+	SELECT COUNT(*) FROM 2015_IRL0_Fixtures WHERE awayTeam=name and homeFT<awayFT INTO a_win;
+	SELECT COUNT(*) FROM 2015_IRL0_Fixtures WHERE awayTeam=name and homeFT=awayFT INTO a_draw;
+	SELECT COUNT(*) FROM 2015_IRL0_Fixtures WHERE awayTeam=name and homeFT>awayFT INTO a_loss;
+	SELECT SUM(awayFT) FROM 2015_IRL0_Fixtures WHERE awayTeam=name INTO a_gf;
+	SELECT SUM(homeFT) FROM 2015_IRL0_Fixtures WHERE awayTeam=name INTO a_ga;
 
 
 	INSERT INTO 2015_IRL0_Table 
 	  (LeagueCode, SeasonCode, TeamName, 
-		--- Win,     Draw,     Loss,     GoalsFor,     GoalsAgainst,     GoalDiff,     Points, 
-		HomeWin, HomeDraw, HomeLoss, HomeGoalsFor, HomeGoalsAgainst, HomeGoalDiff, HomePoints,
-		AwayWin, AwayDraw, AwayLoss, AwayGoalsFor, AwayGoalsAgainst, AwayGoalDiff, AwayPoints) 
+	  Win, Draw, Loss,
+	  GoalsFor, GoalsAgainst, GoalDiff,
+	  Points,
+	  HomeWin, HomeDraw, HomeLoss,
+	  HomeGoalsFor, HomeGoalsAgainst, HomeGoalDiff,
+	  HomePoints,
+	  AwayWin, AwayDraw, AwayLoss,
+	  AwayGoalsFor, AwayGoalsAgainst, AwayGoalDiff,
+	  AwayPoints) 
 	VALUES 
 	  ('IRL0', 2015, name, 
-		--- (hwin+awin), (hdraw+adraw), (hloss+aloss), (hgf+agf), (hga+aga), (hgf-hga+agf-aga), ((hwin+awin)*3)+(hdraw+adraw),
-		hwin, hdraw, hloss, hgf, hga, (hgf-hga), (hwin*3+hdraw),
-		awin, adraw, aloss, agf, aga, (agf-aga), (awin*3+adraw));
+	  (h_win+a_win), (h_draw+a_draw), (h_loss+a_loss),
+	  (h_gf+a_gf), (h_ga+a_ga), (h_gf-h_ga+a_gf-a_ga),
+	  ((h_win*3)+(a_win*3)+h_draw+a_draw),
+	  h_win, h_draw, h_loss,
+	  h_gf, h_ga, (h_gf-h_ga),
+	  (h_win*3)+h_draw,
+	  a_win, a_draw, a_loss,
+	  a_gf, a_ga, (a_gf-a_ga),
+	  (a_win*3)+a_draw);
 	SET i = i + 1;
 END WHILE;
 End;
 ;;
 DELIMITER ;
+
+-- Now call the function to update the table
+CALL UpdateLeagueTable();
