@@ -118,3 +118,5 @@ DELIMITER ;
 
 -- Now call the function to update the table
 CALL UpdateLeagueTable();
+
+create table 2015_IRL0_Teams (TeamSID INT NOT NULL AUTO_INCREMENT, TeamName VARCHAR(64), TeamLogoURL VARCHAR(256), HomeJerseyURL VARCHAR(256), AwayJerseyURL VARCHAR(256), Stadium VARCHAR(64), Manager VARCHAR(64), Honours VARCHAR(512), PRIMARY KEY(TeamSID));
